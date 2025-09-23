@@ -1,0 +1,31 @@
+{
+  "name": "kongu-event-management-system",
+  "version": "1.0.0",
+  "description": "Full-stack Event Management System for Kongu Engineering College",
+  "main": "index.js",
+  "scripts": {
+    "install-all": "npm install && cd frontend && npm install && cd ../backend && npm install",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "start": "cd backend && npm start"
+  },
+  "keywords": [
+    "event-management",
+    "mern-stack",
+    "kongu-college",
+    "react",
+    "nodejs",
+    "mongodb"
+  ],
+  "author": "Kongu Engineering College",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  }
+}

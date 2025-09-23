@@ -1,0 +1,219 @@
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { motion } from 'framer-motion';
+import { Eye, EyeOff, Mail, Lock, LogIn, Shield } from 'lucide-react';
+import { useAuthStore } from '../context/authStore';
+import LoadingSpinner from '../components/LoadingSpinner';
+
+const AdminLoginPage = () => {
+  const navigate = useNavigate();
+  const { login } = useAuthStore();
+  
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    setError
+  } = useForm();
+
+  const onSubmit = async (data) => {
+    setIsLoading(true);
+    try {
+      const result = await login(data);
+      if (result.success) {
+        // Check if user is actually an admin
+        if (result.user.role === 'admin') {
+          navigate('/admin');
+        } else {
+          setError('root', {
+            type: 'manual',
+            message: 'Access denied. Admin credentials required.'
+          });
+        }
+      } else {
+        setError('root', {
+          type: 'manual',
+          message: result.message || 'Login failed'
+        });
+      }
+    } catch (error) {
+      setError('root', {
+        type: 'manual',
+        message: error.message || 'An unexpected error occurred'
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          {/* Header */}
+          <div className="text-center">
+            <Link to="/" className="inline-flex items-center space-x-2 mb-6">
+              <div className="w-12 h-12 kongu-gradient rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-xl">K</span>
+              </div>
+              <div className="text-left">
+                <h1 className="text-2xl font-bold text-gray-900">Kongu Events</h1>
+                <p className="text-sm text-gray-500">Engineering College</p>
+              </div>
+            </Link>
+            
+            <div className="flex items-center justify-center mb-4">
+              <Shield className="w-8 h-8 text-red-600 mr-2" />
+              <h2 className="text-3xl font-bold text-gray-900">
+                Admin Portal
+              </h2>
+            </div>
+            <p className="text-gray-600">
+              Sign in with your administrator credentials
+            </p>
+          </div>
+
+          {/* Form */}
+          <motion.form
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="mt-8 space-y-6"
+            onSubmit={handleSubmit(onSubmit)}
+          >
+            <div className="space-y-4">
+              {/* Email Field */}
+              <div>
+                <label htmlFor="email" className="label">
+                  Admin Email Address
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="email"
+                    type="email"
+                    autoComplete="email"
+                    className={`input-field pl-10 ${errors.email ? 'input-error' : ''}`}
+                    placeholder="Enter admin email"
+                    {...register('email', {
+                      required: 'Email is required',
+                      pattern: {
+                        value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                        message: 'Please enter a valid email address'
+                      }
+                    })}
+                  />
+                </div>
+                {errors.email && (
+                  <p className="error-text">{errors.email.message}</p>
+                )}
+              </div>
+
+              {/* Password Field */}
+              <div>
+                <label htmlFor="password" className="label">
+                  Admin Password
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    className={`input-field pl-10 pr-10 ${errors.password ? 'input-error' : ''}`}
+                    placeholder="Enter admin password"
+                    {...register('password', {
+                      required: 'Password is required',
+                      minLength: {
+                        value: 6,
+                        message: 'Password must be at least 6 characters'
+                      }
+                    })}
+                  />
+                  <button
+                    type="button"
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                    ) : (
+                      <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                    )}
+                  </button>
+                </div>
+                {errors.password && (
+                  <p className="error-text">{errors.password.message}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Error Message */}
+            {errors.root && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-red-50 border border-red-200 rounded-md p-3"
+              >
+                <p className="text-sm text-red-600">{errors.root.message}</p>
+              </motion.div>
+            )}
+
+            {/* Submit Button */}
+            <div>
+              <button
+                type="submit"
+                disabled={isLoading}
+                className="btn-kongu w-full flex justify-center items-center bg-red-600 hover:bg-red-700"
+              >
+                {isLoading ? (
+                  <LoadingSpinner size="sm" color="white" />
+                ) : (
+                  <>
+                    <Shield className="w-5 h-5 mr-2" />
+                    Admin Sign In
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Navigation Links */}
+            <div className="text-center space-y-2">
+              <p className="text-sm text-gray-600">
+                Not an admin?{' '}
+                <Link
+                  to="/login"
+                  className="font-medium text-primary-600 hover:text-primary-500"
+                >
+                  Student Login
+                </Link>
+              </p>
+              <p className="text-sm text-gray-600">
+                <Link
+                  to="/"
+                  className="font-medium text-gray-500 hover:text-gray-700"
+                >
+                  ← Back to Home
+                </Link>
+              </p>
+            </div>
+          </motion.form>
+        </motion.div>
+      </div>
+    </div>
+  );
+};
+
+export default AdminLoginPage;

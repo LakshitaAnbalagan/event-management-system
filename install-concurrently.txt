@@ -1,0 +1,7 @@
+# Run this command in the root directory to install concurrently
+npm install concurrently --save-dev
+
+# Then you can use these commands:
+# npm run dev          - Start both frontend and backend
+# npm run backend      - Start only backend  
+# npm run frontend     - Start only frontend
