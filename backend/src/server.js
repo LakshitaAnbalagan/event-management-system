@@ -59,7 +59,17 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Serve static files from uploads directory
-app.use('/uploads', express.static('uploads'));
+const path = require('path');
+const uploadsPath = path.join(__dirname, '../uploads');
+console.log('📁 Serving static files from:', uploadsPath);
+
+// Add middleware to log static file requests
+app.use('/uploads', (req, res, next) => {
+  console.log(`📸 Static file request: ${req.path}`);
+  next();
+});
+
+app.use('/uploads', express.static(uploadsPath));
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/kongu-event-management')
@@ -110,14 +120,8 @@ app.get('/api/health', (req, res) => {
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ 
-    success: false, 
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal Server Error'
-  });
-});
+const errorHandler = require('./middleware/errorHandler');
+app.use(errorHandler);
 
 // 404 handler
 app.use('*', (req, res) => {

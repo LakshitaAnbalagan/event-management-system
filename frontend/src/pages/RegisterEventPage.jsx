@@ -13,6 +13,8 @@ function RegisterEventPage() {
   const [submitting, setSubmitting] = useState(false);
   const [formData, setFormData] = useState({
     registrationType: 'individual',
+    teamName: '',
+    teamMembers: [],
     contactDetails: {
       email: user?.email || '',
       primaryPhone: user?.phone || '',
@@ -71,18 +73,18 @@ function RegisterEventPage() {
         ...prev,
         contactDetails: {
           ...prev.contactDetails,
-          email: user.email || '',
-          primaryPhone: user.phone || ''
+          email: user.email ?? '',
+          primaryPhone: user.phone ?? ''
         },
         academicDetails: {
           ...prev.academicDetails,
-          college: user.college || '',
-          department: user.department || '',
-          year: user.year || ''
+          college: user.college ?? '',
+          department: user.department ?? '',
+          year: user.year ?? ''
         },
         location: {
           ...prev.location,
-          city: user.city || ''
+          city: user.city ?? ''
         }
       }));
     }
@@ -95,7 +97,7 @@ function RegisterEventPage() {
         ...prev,
         paymentDetails: {
           ...prev.paymentDetails,
-          amount: event.registrationFee || 0
+          amount: event.registrationFee ?? 0
         }
       }));
     }
@@ -236,6 +238,15 @@ function RegisterEventPage() {
       }
 
       console.log('Sending registration data with file upload');
+      console.log('Form data entries:');
+      for (let [key, value] of submitData.entries()) {
+        if (value instanceof File) {
+          console.log(`${key}: File - ${value.name} (${value.size} bytes)`);
+        } else {
+          console.log(`${key}: ${value}`);
+        }
+      }
+      
       const response = await api.post(`/registrations/event/${eventId}`, submitData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -243,8 +254,30 @@ function RegisterEventPage() {
       });
       
       if (response.data && response.data.success) {
-        toast.success('Successfully registered for the event!');
-        navigate(`/events/${eventId}`);
+        // Show success message with more details
+        const registrationData = response.data.data?.registration;
+        const eventName = registrationData?.event?.name || event?.name || 'the event';
+        
+        toast.success(
+          `🎉 Registration successful! You have been registered for ${eventName}. Check your email for confirmation details.`,
+          {
+            duration: 6000, // Show for 6 seconds
+            position: 'top-center',
+            style: {
+              background: '#10B981',
+              color: 'white',
+              padding: '16px',
+              borderRadius: '8px',
+              fontSize: '16px',
+              maxWidth: '500px'
+            }
+          }
+        );
+        
+        // Wait a moment before redirecting to let user see the message
+        setTimeout(() => {
+          navigate(`/events/${eventId}`);
+        }, 2000);
       }
     } catch (err) {
       console.error('Registration error:', err);
@@ -256,10 +289,23 @@ function RegisterEventPage() {
         err.response.data.errors.forEach((error, index) => {
           console.error(`Validation Error ${index + 1}:`, error);
         });
-        const validationErrors = err.response.data.errors.map(error => `${error.path}: ${error.msg}`).join('; ');
+        const validationErrors = err.response.data.errors.map(error => `${error.path || error.param || 'Field'}: ${error.msg || error.message}`).join('; ');
         toast.error(`Validation errors: ${validationErrors}`);
+      } else if (err.response?.status === 400) {
+        // Handle specific 400 errors
+        const errorMessage = err.response?.data?.message || 'Invalid registration data';
+        toast.error(errorMessage);
+      } else if (err.response?.status === 401) {
+        toast.error('Please login to register for events');
+        navigate('/login');
+      } else if (err.response?.status === 404) {
+        toast.error('Event not found or registration is closed');
+      } else if (err.response?.status === 500) {
+        toast.error('Server error. Please try again later or contact support.');
+      } else if (err.code === 'NETWORK_ERROR' || !err.response) {
+        toast.error('Network error. Please check your connection and try again.');
       } else {
-        const errorMessage = err.response?.data?.message || 'Registration failed';
+        const errorMessage = err.response?.data?.message || err.message || 'Registration failed';
         toast.error(errorMessage);
       }
     } finally {

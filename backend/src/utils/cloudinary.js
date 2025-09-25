@@ -1,4 +1,22 @@
 const cloudinary = require('cloudinary').v2;
+const dotenv = require('dotenv');
+
+dotenv.config();
+
+// Debugging Cloudinary environment variables
+console.log('CLOUDINARY_CLOUD_NAME:', process.env.CLOUDINARY_CLOUD_NAME ? 'Loaded' : 'Missing');
+console.log('CLOUDINARY_API_KEY:', process.env.CLOUDINARY_API_KEY ? 'Loaded' : 'Missing');
+console.log('CLOUDINARY_API_SECRET:', process.env.CLOUDINARY_API_SECRET ? 'Loaded' : 'Missing');
+
+// Check if Cloudinary credentials are available
+const hasCloudinaryConfig = process.env.CLOUDINARY_CLOUD_NAME && 
+                           process.env.CLOUDINARY_API_KEY && 
+                           process.env.CLOUDINARY_API_SECRET;
+
+if (!hasCloudinaryConfig) {
+  console.warn('⚠️  Cloudinary configuration is missing! File uploads will not work.');
+  console.warn('Please set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, and CLOUDINARY_API_SECRET in your .env file');
+}
 
 // Configure Cloudinary
 cloudinary.config({
@@ -6,6 +24,14 @@ cloudinary.config({
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
+
+// Test cloudinary configuration
+if (hasCloudinaryConfig) {
+  console.log('✅ Cloudinary configured successfully');
+  console.log('Cloud name:', process.env.CLOUDINARY_CLOUD_NAME);
+} else {
+  console.log('❌ Cloudinary configuration incomplete');
+}
 
 // Upload image to cloudinary
 const uploadToCloudinary = async (buffer, options = {}) => {

@@ -7,8 +7,15 @@ const { uploadToCloudinary } = require('../utils/cloudinary');
 // Create new registration
 const createRegistration = async (req, res) => {
   try {
+    // Log incoming request for debugging
+    console.log('Registration request received:');
+    console.log('Body:', req.body);
+    console.log('File:', req.file);
+    console.log('User:', req.user?._id);
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('Validation errors:', errors.array());
       return res.status(400).json({
         success: false,
         message: 'Validation errors',
@@ -61,7 +68,8 @@ const createRegistration = async (req, res) => {
       });
     }
 
-    const {
+    // Extract and parse form data (handling both JSON and form-data formats)
+    let {
       registrationType,
       teamName,
       teamMembers,
@@ -73,6 +81,69 @@ const createRegistration = async (req, res) => {
       specialRequirements,
       emergencyContact
     } = req.body;
+
+    // Handle form-data format where nested objects come as separate fields
+    if (!contactDetails && req.body['contactDetails.email']) {
+      contactDetails = {
+        email: req.body['contactDetails.email'],
+        primaryPhone: req.body['contactDetails.primaryPhone'],
+        alternatePhone: req.body['contactDetails.alternatePhone']
+      };
+    }
+
+    if (!academicDetails && req.body['academicDetails.college']) {
+      academicDetails = {
+        college: req.body['academicDetails.college'],
+        department: req.body['academicDetails.department'],
+        year: req.body['academicDetails.year'],
+        rollNumber: req.body['academicDetails.rollNumber']
+      };
+    }
+
+    if (!location && req.body['location.city']) {
+      location = {
+        city: req.body['location.city'],
+        state: req.body['location.state'],
+        pincode: req.body['location.pincode']
+      };
+    }
+
+    if (!paymentDetails && req.body['paymentDetails.amount']) {
+      paymentDetails = {
+        amount: req.body['paymentDetails.amount'],
+        transactionId: req.body['paymentDetails.transactionId']
+      };
+    }
+
+    if (!emergencyContact && req.body['emergencyContact.name']) {
+      emergencyContact = {
+        name: req.body['emergencyContact.name'],
+        phone: req.body['emergencyContact.phone'],
+        relation: req.body['emergencyContact.relation']
+      };
+    }
+
+    // Validate required fields
+    if (!contactDetails || !contactDetails.email || !contactDetails.primaryPhone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Contact details (email and phone) are required'
+      });
+    }
+
+    if (!academicDetails || !academicDetails.college || !academicDetails.department || !academicDetails.year) {
+      return res.status(400).json({
+        success: false,
+        message: 'Academic details (college, department, year) are required'
+      });
+    }
+
+    if (!location || !location.city) {
+      return res.status(400).json({
+        success: false,
+        message: 'Location (city) is required'
+      });
+    }
 
     // Validate registration type
     if (!['individual', 'team'].includes(registrationType)) {
@@ -119,28 +190,41 @@ const createRegistration = async (req, res) => {
     let paymentScreenshot = null;
     if (req.file) {
       try {
-        const uploadResult = await uploadToCloudinary(req.file.buffer, {
-          folder: 'kongu-events/payment-screenshots',
-          transformation: [
-            { width: 800, height: 800, crop: 'limit', quality: 'auto:good' }
-          ]
+        console.log('File upload details:', {
+          filename: req.file.filename,
+          originalname: req.file.originalname,
+          path: req.file.path,
+          size: req.file.size
         });
-        
-        paymentScreenshot = {
-          public_id: uploadResult.public_id,
-          url: uploadResult.url
-        };
+
+        // Check if using Cloudinary or local storage
+        if (req.file.path && req.file.path.includes('cloudinary')) {
+          // Cloudinary upload
+          paymentScreenshot = {
+            public_id: req.file.filename,
+            url: req.file.path
+          };
+          console.log('✅ Cloudinary upload successful');
+        } else {
+          // Local storage upload
+          paymentScreenshot = {
+            public_id: req.file.filename,
+            url: `/uploads/payment-screenshots/${req.file.filename}`
+          };
+          console.log('✅ Local storage upload successful');
+        }
+        console.log('Payment screenshot uploaded successfully:', paymentScreenshot);
       } catch (uploadError) {
-        console.error('Payment screenshot upload error:', uploadError);
-        return res.status(400).json({
+        console.error('Error processing uploaded file:', uploadError);
+        return res.status(500).json({
           success: false,
-          message: 'Failed to upload payment screenshot'
+          message: 'Failed to process payment screenshot'
         });
       }
-    } else {
+    } else if (event.registrationFee > 0) { // Only require screenshot if there is a fee
       return res.status(400).json({
         success: false,
-        message: 'Payment screenshot is required'
+        message: 'Payment screenshot is required for paid events'
       });
     }
 
@@ -374,25 +458,10 @@ const updateRegistration = async (req, res) => {
 
     // Handle payment screenshot update if provided
     if (req.file) {
-      try {
-        const uploadResult = await uploadToCloudinary(req.file.buffer, {
-          folder: 'kongu-events/payment-screenshots',
-          transformation: [
-            { width: 800, height: 800, crop: 'limit', quality: 'auto:good' }
-          ]
-        });
-        
-        registration.paymentDetails.paymentScreenshot = {
-          public_id: uploadResult.public_id,
-          url: uploadResult.url
-        };
-      } catch (uploadError) {
-        console.error('Payment screenshot upload error:', uploadError);
-        return res.status(400).json({
-          success: false,
-          message: 'Failed to upload new payment screenshot'
-        });
-      }
+      registration.paymentDetails.paymentScreenshot = {
+        public_id: req.file.filename,
+        url: req.file.path
+      };
     }
 
     await registration.save();
