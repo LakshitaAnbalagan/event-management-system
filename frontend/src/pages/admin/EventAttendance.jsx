@@ -17,7 +17,7 @@ function EventAttendance() {
   // Fetch attendance data
   const { data: attendanceData, isLoading, error } = useQuery(
     ['event-attendance', eventId, filters],
-    () => api.get(`/admin/events/${eventId}/attendance`, { params: filters }),
+    () => api.get(`/admin/test-events/${eventId}/attendance`, { params: filters }),
     {
       enabled: !!eventId,
       keepPreviousData: true
@@ -63,13 +63,17 @@ function EventAttendance() {
   }
 
   if (error) {
+    console.error('EventAttendance error:', error);
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Error</h2>
           <p className="text-red-600 mb-4">
-            {error.response?.data?.message || 'Failed to load attendance data'}
+            {error.message || 'Failed to load attendance data'}
           </p>
+          <div className="text-sm text-gray-600 mb-4">
+            Event ID: {eventId}
+          </div>
           <button
             onClick={() => navigate('/admin/events')}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"

@@ -24,7 +24,7 @@ function EventRegistrationsDetailed() {
   // Fetch detailed registrations
   const { data: registrationsData, isLoading, error } = useQuery(
     ['detailed-registrations', eventId, filters],
-    () => api.get(`/admin/events/${eventId}/registrations/detailed`, { params: filters }),
+    () => api.get(`/admin/test-events/${eventId}/registrations/detailed`, { params: filters }),
     {
       enabled: !!eventId,
       keepPreviousData: true
@@ -126,13 +126,17 @@ function EventRegistrationsDetailed() {
   }
 
   if (error) {
+    console.error('EventRegistrationsDetailed error:', error);
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Error</h2>
           <p className="text-red-600 mb-4">
-            {error.response?.data?.message || 'Failed to load registrations'}
+            {error.message || 'Failed to load registrations'}
           </p>
+          <div className="text-sm text-gray-600 mb-4">
+            Event ID: {eventId}
+          </div>
           <button
             onClick={() => navigate('/admin/events')}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"

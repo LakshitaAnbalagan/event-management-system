@@ -47,9 +47,55 @@ const upload = multer({
   }
 });
 
-// Test route without authentication (temporary for debugging)
+// Test routes without authentication (temporary for debugging)
 router.get('/test-events-no-auth', getEvents);
 router.get('/test-stats-no-auth', getStats);
+
+// Mock test routes with simple responses
+router.get('/test-events/:eventId/registrations/detailed', (req, res) => {
+  const { eventId } = req.params;
+  console.log(`📋 Mock registrations endpoint called for event: ${eventId}`);
+  
+  res.json({
+    success: true,
+    data: {
+      event: { id: eventId, name: 'Test Event', startDate: new Date(), venue: 'Test Venue' },
+      registrations: [],
+      statistics: { totalRegistrations: 0, approvedRegistrations: 0, pendingRegistrations: 0, rejectedRegistrations: 0 },
+      pagination: { currentPage: 1, totalPages: 1, totalRegistrations: 0, hasNextPage: false, hasPrevPage: false }
+    }
+  });
+});
+
+router.get('/test-events/:eventId/attendance', (req, res) => {
+  const { eventId } = req.params;
+  console.log(`✅ Mock attendance endpoint called for event: ${eventId}`);
+  
+  res.json({
+    success: true,
+    data: {
+      event: { id: eventId, name: 'Test Event', startDate: new Date(), venue: 'Test Venue' },
+      attendance: [],
+      statistics: { attendanceStats: [], totalRegistrations: 0, attendanceMarked: 0, attendanceNotMarked: 0 },
+      pagination: { currentPage: 1, totalPages: 1, totalAttendance: 0, hasNextPage: false, hasPrevPage: false }
+    }
+  });
+});
+
+router.get('/test-events/:eventId/prizes', (req, res) => {
+  const { eventId } = req.params;
+  console.log(`🏆 Mock prizes endpoint called for event: ${eventId}`);
+  
+  res.json({
+    success: true,
+    data: {
+      event: { id: eventId, name: 'Test Event', startDate: new Date(), venue: 'Test Venue' },
+      prizes: [],
+      statistics: { prizeStats: [], totalPrizes: 0 },
+      pagination: { currentPage: 1, totalPages: 1, totalPrizes: 0, hasNextPage: false, hasPrevPage: false }
+    }
+  });
+});
 
 // Middleware to ensure admin authentication
 router.use(authenticateToken);

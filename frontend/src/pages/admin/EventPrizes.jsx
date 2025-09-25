@@ -21,7 +21,7 @@ function EventPrizes() {
   // Fetch prizes data
   const { data: prizesData, isLoading, error } = useQuery(
     ['event-prizes', eventId, filters],
-    () => api.get(`/admin/events/${eventId}/prizes`, { params: filters }),
+    () => api.get(`/admin/test-events/${eventId}/prizes`, { params: filters }),
     {
       enabled: !!eventId,
       keepPreviousData: true
@@ -134,13 +134,17 @@ function EventPrizes() {
   }
 
   if (error) {
+    console.error('EventPrizes error:', error);
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Error</h2>
           <p className="text-red-600 mb-4">
-            {error.response?.data?.message || 'Failed to load prizes'}
+            {error.message || 'Failed to fetch event prizes'}
           </p>
+          <div className="text-sm text-gray-600 mb-4">
+            Event ID: {eventId}
+          </div>
           <button
             onClick={() => navigate('/admin/events')}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
