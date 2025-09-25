@@ -34,7 +34,7 @@ function EventRegistrationsDetailed() {
   // Mark attendance mutation
   const markAttendanceMutation = useMutation(
     ({ registrationId, attendanceData }) =>
-      api.post(`/admin/events/${eventId}/registrations/${registrationId}/attendance`, attendanceData),
+      api.post(`/admin/test-events/${eventId}/registrations/${registrationId}/attendance`, attendanceData),
     {
       onSuccess: () => {
         toast.success('Attendance marked successfully');
@@ -43,14 +43,14 @@ function EventRegistrationsDetailed() {
         setSelectedRegistration(null);
       },
       onError: (error) => {
-        toast.error(error.response?.data?.message || 'Failed to mark attendance');
+        toast.error(error.message || 'Failed to mark attendance');
       }
     }
   );
 
   // Add prize mutation
   const addPrizeMutation = useMutation(
-    (prizeData) => api.post(`/admin/events/${eventId}/prizes`, prizeData),
+    (prizeData) => api.post(`/admin/test-events/${eventId}/prizes`, prizeData),
     {
       onSuccess: () => {
         toast.success('Prize added successfully');
@@ -59,7 +59,7 @@ function EventRegistrationsDetailed() {
         setSelectedRegistration(null);
       },
       onError: (error) => {
-        toast.error(error.response?.data?.message || 'Failed to add prize');
+        toast.error(error.message || 'Failed to add prize');
       }
     }
   );
@@ -90,28 +90,20 @@ function EventRegistrationsDetailed() {
   };
 
   const submitPrize = (prizeData) => {
-    const formData = new FormData();
-    Object.keys(prizeData).forEach(key => {
-      if (key === 'prizeImage' && prizeData[key]) {
-        formData.append('prizeImage', prizeData[key]);
-      } else if (key === 'teamMembers' && Array.isArray(prizeData[key])) {
-        formData.append(key, JSON.stringify(prizeData[key]));
-      } else {
-        formData.append(key, prizeData[key]);
-      }
-    });
+    const payload = {
+      ...prizeData,
+      registrationId: selectedRegistration._id,
+      winnerType: selectedRegistration.registrationType,
+    };
     
-    // Add registration and winner details
-    formData.append('registrationId', selectedRegistration._id);
-    formData.append('winnerType', selectedRegistration.registrationType);
     if (selectedRegistration.registrationType === 'individual') {
-      formData.append('userId', selectedRegistration.user._id);
+      payload.userId = selectedRegistration.user._id;
     } else {
-      formData.append('teamName', selectedRegistration.teamName);
-      formData.append('teamMembers', JSON.stringify(selectedRegistration.teamMembers));
+      payload.teamName = selectedRegistration.teamName;
+      payload.teamMembers = selectedRegistration.teamMembers;
     }
 
-    addPrizeMutation.mutate(formData);
+    addPrizeMutation.mutate(payload);
   };
 
   if (isLoading) {

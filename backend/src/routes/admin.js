@@ -2,6 +2,14 @@ const express = require('express');
 const { body } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
+const mongoose = require('mongoose');
+
+// Import models for direct database queries
+const Event = require('../models/Event');
+const Registration = require('../models/Registration');
+const Attendance = require('../models/Attendance');
+const Prize = require('../models/Prize');
+const User = require('../models/User');
 const {
   createEvent,
   updateEvent,
@@ -51,50 +59,478 @@ const upload = multer({
 router.get('/test-events-no-auth', getEvents);
 router.get('/test-stats-no-auth', getStats);
 
-// Mock test routes with simple responses
-router.get('/test-events/:eventId/registrations/detailed', (req, res) => {
-  const { eventId } = req.params;
-  console.log(`📋 Mock registrations endpoint called for event: ${eventId}`);
-  
-  res.json({
-    success: true,
-    data: {
-      event: { id: eventId, name: 'Test Event', startDate: new Date(), venue: 'Test Venue' },
-      registrations: [],
-      statistics: { totalRegistrations: 0, approvedRegistrations: 0, pendingRegistrations: 0, rejectedRegistrations: 0 },
-      pagination: { currentPage: 1, totalPages: 1, totalRegistrations: 0, hasNextPage: false, hasPrevPage: false }
+// Route to list all available events with their IDs
+router.get('/list-events', async (req, res) => {
+  try {
+    const events = await Event.find({}).select('_id name startDate venue').limit(10);
+    const eventsWithCounts = [];
+    
+    for (const event of events) {
+      const registrationCount = await Registration.countDocuments({ event: event._id });
+      eventsWithCounts.push({
+        id: event._id,
+        name: event.name,
+        startDate: event.startDate,
+        venue: event.venue,
+        registrationCount,
+        urls: {
+          registrations: `/admin/events/${event._id}/registrations/detailed`,
+          attendance: `/admin/events/${event._id}/attendance`,
+          prizes: `/admin/events/${event._id}/prizes`
+        }
+      });
     }
-  });
+    
+    res.json({
+      success: true,
+      data: eventsWithCounts
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch events',
+      error: error.message
+    });
+  }
 });
 
-router.get('/test-events/:eventId/attendance', (req, res) => {
-  const { eventId } = req.params;
-  console.log(`✅ Mock attendance endpoint called for event: ${eventId}`);
-  
-  res.json({
-    success: true,
-    data: {
-      event: { id: eventId, name: 'Test Event', startDate: new Date(), venue: 'Test Venue' },
-      attendance: [],
-      statistics: { attendanceStats: [], totalRegistrations: 0, attendanceMarked: 0, attendanceNotMarked: 0 },
-      pagination: { currentPage: 1, totalPages: 1, totalAttendance: 0, hasNextPage: false, hasPrevPage: false }
+// Real data test routes
+router.get('/test-events/:eventId/registrations/detailed', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { page = 1, limit = 20, status = 'all', registrationType = 'all', search = '' } = req.query;
+    
+    console.log(`📋 Real registrations endpoint called for event: ${eventId}`);
+    
+    // Verify event ID is valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid event ID format'
+      });
     }
-  });
+
+    // Verify event exists
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Build filter
+    const filter = { event: eventId };
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+    if (registrationType && registrationType !== 'all') {
+      filter.registrationType = registrationType;
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get registrations with user details
+    const registrations = await Registration.find(filter)
+      .populate('user', 'name email phone college department')
+      .populate('event', 'name startDate venue')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const totalRegistrations = await Registration.countDocuments(filter);
+    const totalPages = Math.ceil(totalRegistrations / parseInt(limit));
+
+    // Get statistics
+    const stats = await Registration.aggregate([
+      { $match: { event: new mongoose.Types.ObjectId(eventId) } },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const statistics = {
+      totalRegistrations: await Registration.countDocuments({ event: eventId }),
+      approvedRegistrations: stats.find(s => s._id === 'approved')?.count || 0,
+      pendingRegistrations: stats.find(s => s._id === 'pending')?.count || 0,
+      rejectedRegistrations: stats.find(s => s._id === 'rejected')?.count || 0
+    };
+
+    res.json({
+      success: true,
+      data: {
+        event: {
+          id: event._id,
+          name: event.name,
+          startDate: event.startDate,
+          venue: event.venue
+        },
+        registrations,
+        statistics,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalRegistrations,
+          hasNextPage: parseInt(page) < totalPages,
+          hasPrevPage: parseInt(page) > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    const { eventId } = req.params;
+    console.error('❌ Error in test registrations route:', error);
+    console.error('❌ Error details:', {
+      eventId,
+      message: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch registrations',
+      error: error.message,
+      eventId: eventId
+    });
+  }
 });
 
-router.get('/test-events/:eventId/prizes', (req, res) => {
-  const { eventId } = req.params;
-  console.log(`🏆 Mock prizes endpoint called for event: ${eventId}`);
-  
-  res.json({
-    success: true,
-    data: {
-      event: { id: eventId, name: 'Test Event', startDate: new Date(), venue: 'Test Venue' },
-      prizes: [],
-      statistics: { prizeStats: [], totalPrizes: 0 },
-      pagination: { currentPage: 1, totalPages: 1, totalPrizes: 0, hasNextPage: false, hasPrevPage: false }
+router.get('/test-events/:eventId/attendance', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { page = 1, limit = 20, status, search } = req.query;
+    
+    console.log(`✅ Real attendance endpoint called for event: ${eventId}`);
+    
+    // Verify event ID is valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid event ID format'
+      });
     }
-  });
+
+    // Verify event exists
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Build filter
+    const filter = { event: eventId };
+    if (status && status !== 'all') {
+      filter.attendanceStatus = status;
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get attendance records
+    const attendance = await Attendance.find(filter)
+      .populate('user', 'name email phone college department')
+      .populate('registration', 'registrationNumber registrationType teamName')
+      .populate('markedBy', 'name')
+      .sort({ markedAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const totalAttendance = await Attendance.countDocuments(filter);
+    const totalPages = Math.ceil(totalAttendance / parseInt(limit));
+
+    // Get summary statistics
+    const attendanceStats = await Attendance.aggregate([
+      { $match: { event: new mongoose.Types.ObjectId(eventId) } },
+      {
+        $group: {
+          _id: '$attendanceStatus',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const totalRegistrations = await Registration.countDocuments({ event: eventId });
+    const attendanceMarked = await Attendance.countDocuments({ event: eventId });
+
+    res.json({
+      success: true,
+      data: {
+        event: {
+          id: event._id,
+          name: event.name,
+          startDate: event.startDate,
+          venue: event.venue
+        },
+        attendance,
+        statistics: {
+          attendanceStats,
+          totalRegistrations,
+          attendanceMarked,
+          attendanceNotMarked: totalRegistrations - attendanceMarked
+        },
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalAttendance,
+          hasNextPage: parseInt(page) < totalPages,
+          hasPrevPage: parseInt(page) > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in test attendance route:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch attendance',
+      error: error.message
+    });
+  }
+});
+
+router.get('/test-events/:eventId/prizes', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { page = 1, limit = 20, position } = req.query;
+    
+    console.log(`🏆 Real prizes endpoint called for event: ${eventId}`);
+    
+    // Verify event ID is valid MongoDB ObjectId
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid event ID format'
+      });
+    }
+
+    // Verify event exists
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Build filter
+    const filter = { event: eventId };
+    if (position && position !== 'all') {
+      filter.position = position;
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const prizes = await Prize.find(filter)
+      .populate('event', 'name')
+      .populate('winner.user', 'name email phone college department')
+      .populate('winner.registration', 'registrationNumber registrationType teamName')
+      .populate('awardedBy', 'name')
+      .sort({ awardedAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const totalPrizes = await Prize.countDocuments(filter);
+    const totalPages = Math.ceil(totalPrizes / parseInt(limit));
+
+    // Get prize statistics
+    const prizeStats = await Prize.aggregate([
+      { $match: { event: new mongoose.Types.ObjectId(eventId) } },
+      {
+        $group: {
+          _id: '$position',
+          count: { $sum: 1 },
+          totalValue: { $sum: '$prizeValue' }
+        }
+      }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        event: {
+          id: event._id,
+          name: event.name,
+          startDate: event.startDate,
+          venue: event.venue
+        },
+        prizes,
+        statistics: {
+          prizeStats,
+          totalPrizes
+        },
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalPrizes,
+          hasNextPage: parseInt(page) < totalPages,
+          hasPrevPage: parseInt(page) > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in test prizes route:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch prizes',
+      error: error.message
+    });
+  }
+});
+
+// Test routes for marking attendance and prizes (no auth required)
+router.post('/test-events/:eventId/registrations/:registrationId/attendance', async (req, res) => {
+  try {
+    const { eventId, registrationId } = req.params;
+    const { attendanceStatus, notes } = req.body;
+
+    console.log(`✅ Marking attendance for registration: ${registrationId}`);
+
+    if (!['present', 'absent', 'late'].includes(attendanceStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid attendance status. Must be one of: present, absent, late'
+      });
+    }
+
+    // Verify event and registration exist
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    const registration = await Registration.findById(registrationId)
+      .populate('user', 'name email');
+    if (!registration || registration.event.toString() !== eventId) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration not found for this event'
+      });
+    }
+
+    // Check if attendance already exists
+    let attendance = await Attendance.findOne({
+      event: eventId,
+      registration: registrationId
+    });
+
+    if (attendance) {
+      // Update existing attendance
+      attendance.attendanceStatus = attendanceStatus;
+      attendance.notes = notes || '';
+      attendance.markedAt = new Date();
+      
+      if (attendanceStatus === 'present' && !attendance.checkInTime) {
+        attendance.checkInTime = new Date();
+      }
+    } else {
+      // Create new attendance record
+      attendance = new Attendance({
+        event: eventId,
+        registration: registrationId,
+        user: registration.user._id,
+        attendanceStatus,
+        notes: notes || '',
+        checkInTime: attendanceStatus === 'present' ? new Date() : null
+      });
+    }
+
+    await attendance.save();
+
+    // Populate the response
+    const populatedAttendance = await Attendance.findById(attendance._id)
+      .populate('user', 'name email')
+      .populate('registration', 'registrationNumber');
+
+    res.status(200).json({
+      success: true,
+      message: 'Attendance marked successfully',
+      data: { attendance: populatedAttendance }
+    });
+
+  } catch (error) {
+    console.error('Mark attendance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to mark attendance',
+      error: error.message
+    });
+  }
+});
+
+router.post('/test-events/:eventId/prizes', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const {
+      prizeName,
+      prizeDescription,
+      position,
+      prizeValue,
+      currency = 'INR',
+      registrationId,
+      userId,
+      winnerType,
+      teamName,
+      notes
+    } = req.body;
+
+    console.log(`🏆 Adding prize for event: ${eventId}`);
+
+    // Verify event exists
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Create prize
+    const prize = new Prize({
+      event: eventId,
+      prizeName,
+      prizeDescription,
+      position,
+      prizeValue: parseFloat(prizeValue) || 0,
+      currency,
+      winner: {
+        type: winnerType || 'individual',
+        user: userId || null,
+        registration: registrationId || null,
+        teamName: teamName || null
+      },
+      notes: notes || '',
+      awardedAt: new Date()
+    });
+
+    await prize.save();
+
+    // Populate the response
+    const populatedPrize = await Prize.findById(prize._id)
+      .populate('event', 'name')
+      .populate('winner.user', 'name email')
+      .populate('winner.registration', 'registrationNumber registrationType teamName');
+
+    res.status(201).json({
+      success: true,
+      message: 'Prize added successfully',
+      data: { prize: populatedPrize }
+    });
+
+  } catch (error) {
+    console.error('Add prize error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add prize',
+      error: error.message
+    });
+  }
 });
 
 // Middleware to ensure admin authentication
