@@ -12,7 +12,10 @@ import {
   MapPin,
   Users,
   Clock,
-  MoreVertical
+  MoreVertical,
+  UserCheck,
+  Award,
+  FileText
 } from 'lucide-react';
 import api from '../../services/api';
 import toast from 'react-hot-toast';
@@ -31,12 +34,19 @@ function AdminEvents() {
   const fetchEvents = async () => {
     try {
       setLoading(true);
+      console.log('🔍 Fetching events from /admin/events...');
+      
       const response = await api.get('/admin/events');
+      console.log('📊 Events API Response:', response);
+      
       if (response.success) {
+        console.log('✅ Setting events:', response.data.events);
         setEvents(response.data.events || []);
+      } else {
+        console.log('❌ Events response failed:', response);
       }
     } catch (error) {
-      console.error('Error fetching events:', error);
+      console.error('❌ Error fetching events:', error);
       toast.error('Failed to load events');
     } finally {
       setLoading(false);
@@ -80,9 +90,9 @@ function AdminEvents() {
   };
 
   const filteredEvents = events.filter(event => {
-    const matchesSearch = event.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          event.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = filterCategory === 'all' || event.category === filterCategory;
+    const matchesCategory = filterCategory === 'all' || event.department === filterCategory;
     const matchesStatus = filterStatus === 'all' || 
                          (filterStatus === 'active' && event.isActive) ||
                          (filterStatus === 'inactive' && !event.isActive);
@@ -100,7 +110,7 @@ function AdminEvents() {
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
-              <h3 className="text-xl font-semibold text-gray-900">{event.title}</h3>
+              <h3 className="text-xl font-semibold text-gray-900">{event.name}</h3>
               <span className={`px-2 py-1 text-xs font-medium rounded-full ${
                 event.isActive 
                   ? 'bg-green-100 text-green-800' 
@@ -108,37 +118,67 @@ function AdminEvents() {
               }`}>
                 {event.isActive ? 'Active' : 'Inactive'}
               </span>
+              <span className={`px-2 py-1 text-xs font-medium rounded-full ${
+                event.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
+                event.status === 'ongoing' ? 'bg-yellow-100 text-yellow-800' :
+                event.status === 'completed' ? 'bg-gray-100 text-gray-800' :
+                'bg-red-100 text-red-800'
+              }`}>
+                {event.status}
+              </span>
             </div>
             <p className="text-gray-600 text-sm mb-3 line-clamp-2">{event.description}</p>
             
             <div className="grid grid-cols-2 gap-4 text-sm text-gray-500">
               <div className="flex items-center">
                 <Calendar className="w-4 h-4 mr-2" />
-                {new Date(event.date).toLocaleDateString()}
+                {new Date(event.startDate).toLocaleDateString()}
               </div>
               <div className="flex items-center">
                 <Clock className="w-4 h-4 mr-2" />
-                {new Date(event.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {new Date(event.startDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
               </div>
               <div className="flex items-center">
                 <MapPin className="w-4 h-4 mr-2" />
-                {event.location}
+                {event.venue}
               </div>
               <div className="flex items-center">
                 <Users className="w-4 h-4 mr-2" />
-                {event.registrations?.length || 0}/{event.maxParticipants}
+                {event.totalRegistrations || 0}
+                {event.maxParticipants ? `/${event.maxParticipants}` : ''}
               </div>
             </div>
           </div>
-          
-          <div className="flex items-center space-x-2 ml-4">
-            <Link
-              to={`/admin/events/${event._id}/registrations`}
-              className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"
-              title="View Registrations"
-            >
-              <Eye className="w-4 h-4" />
-            </Link>
+        </div>
+        
+        {/* New Feature Buttons */}
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <Link
+            to={`/admin/events/${event._id}/registrations/detailed`}
+            className="flex items-center justify-center px-3 py-2 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-sm"
+          >
+            <FileText className="w-4 h-4 mr-1" />
+            Registrations
+          </Link>
+          <Link
+            to={`/admin/events/${event._id}/attendance`}
+            className="flex items-center justify-center px-3 py-2 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-sm"
+          >
+            <UserCheck className="w-4 h-4 mr-1" />
+            Attendance
+          </Link>
+          <Link
+            to={`/admin/events/${event._id}/prizes`}
+            className="flex items-center justify-center px-3 py-2 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors text-sm"
+          >
+            <Award className="w-4 h-4 mr-1" />
+            Prizes
+          </Link>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+          <div className="flex items-center space-x-2">
             <Link
               to={`/admin/events/edit/${event._id}`}
               className="p-2 text-green-600 hover:bg-green-100 rounded-lg"
@@ -147,17 +187,6 @@ function AdminEvents() {
               <Edit className="w-4 h-4" />
             </Link>
             <button
-              onClick={() => handleToggleStatus(event._id, event.isActive)}
-              className={`p-2 rounded-lg ${
-                event.isActive 
-                  ? 'text-orange-600 hover:bg-orange-100' 
-                  : 'text-green-600 hover:bg-green-100'
-              }`}
-              title={event.isActive ? 'Deactivate Event' : 'Activate Event'}
-            >
-              <MoreVertical className="w-4 h-4" />
-            </button>
-            <button
               onClick={() => handleDeleteEvent(event._id)}
               className="p-2 text-red-600 hover:bg-red-100 rounded-lg"
               title="Delete Event"
@@ -165,21 +194,21 @@ function AdminEvents() {
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
-        </div>
-        
-        <div className="flex items-center justify-between pt-4 border-t border-gray-200">
-          <span className={`px-3 py-1 text-xs font-medium rounded-full ${
-            event.category === 'technical' ? 'bg-blue-100 text-blue-800' :
-            event.category === 'cultural' ? 'bg-purple-100 text-purple-800' :
-            event.category === 'sports' ? 'bg-green-100 text-green-800' :
-            event.category === 'workshop' ? 'bg-yellow-100 text-yellow-800' :
-            'bg-gray-100 text-gray-800'
-          }`}>
-            {event.category.charAt(0).toUpperCase() + event.category.slice(1)}
-          </span>
           
-          <div className="text-xs text-gray-500">
-            Created {new Date(event.createdAt).toLocaleDateString()}
+          <div className="flex items-center gap-2">
+            <span className={`px-3 py-1 text-xs font-medium rounded-full ${
+              event.department === 'technical' ? 'bg-blue-100 text-blue-800' :
+              event.department === 'cultural' ? 'bg-purple-100 text-purple-800' :
+              event.department === 'sports' ? 'bg-green-100 text-green-800' :
+              event.department === 'workshop' ? 'bg-yellow-100 text-yellow-800' :
+              'bg-gray-100 text-gray-800'
+            }`}>
+              {event.department?.charAt(0).toUpperCase() + event.department?.slice(1)}
+            </span>
+            
+            <div className="text-xs text-gray-500">
+              Created {new Date(event.createdAt).toLocaleDateString()}
+            </div>
           </div>
         </div>
       </div>
@@ -226,14 +255,14 @@ function AdminEvents() {
             />
           </div>
 
-          {/* Category Filter */}
+          {/* Department Filter */}
           <div>
             <select
               value={filterCategory}
               onChange={(e) => setFilterCategory(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="all">All Categories</option>
+              <option value="all">All Departments</option>
               <option value="technical">Technical</option>
               <option value="cultural">Cultural</option>
               <option value="sports">Sports</option>
@@ -307,13 +336,13 @@ function AdminEvents() {
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-orange-600">
-                {events.reduce((sum, e) => sum + (e.registrations?.length || 0), 0)}
+                {events.reduce((sum, e) => sum + (e.totalRegistrations || 0), 0)}
               </div>
               <div className="text-sm text-gray-600">Total Registrations</div>
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">
-                {events.reduce((sum, e) => sum + e.maxParticipants, 0)}
+                {events.reduce((sum, e) => sum + (e.maxParticipants || 0), 0)}
               </div>
               <div className="text-sm text-gray-600">Total Capacity</div>
             </div>

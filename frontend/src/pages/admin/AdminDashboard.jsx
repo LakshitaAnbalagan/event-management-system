@@ -8,7 +8,9 @@ import {
   Plus,
   Eye,
   Edit,
-  Trash2
+  Trash2,
+  FileText,
+  Award
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import api from '../../services/api';
@@ -30,21 +32,32 @@ function AdminDashboard() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
+      console.log('🔍 Fetching dashboard data...');
+      
       // Fetch dashboard stats and recent events
       const [statsResponse, eventsResponse] = await Promise.all([
         api.get('/admin/stats'),
         api.get('/admin/events?limit=5')
       ]);
 
+      console.log('📊 Stats Response:', statsResponse);
+      console.log('📋 Events Response:', eventsResponse);
+
       if (statsResponse.success) {
+        console.log('✅ Setting stats:', statsResponse.data);
         setStats(statsResponse.data);
+      } else {
+        console.log('❌ Stats response failed:', statsResponse);
       }
 
       if (eventsResponse.success) {
+        console.log('✅ Setting events:', eventsResponse.data.events);
         setRecentEvents(eventsResponse.data.events || []);
+      } else {
+        console.log('❌ Events response failed:', eventsResponse);
       }
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      console.error('❌ Error fetching dashboard data:', error);
     } finally {
       setLoading(false);
     }
@@ -153,25 +166,47 @@ function AdminDashboard() {
                   className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
                 >
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900">{event.title}</h3>
+                    <h3 className="font-semibold text-gray-900">{event.name}</h3>
                     <p className="text-sm text-gray-600 mt-1">{event.description}</p>
                     <div className="flex items-center mt-2 space-x-4 text-xs text-gray-500">
-                      <span>📅 {new Date(event.date).toLocaleDateString()}</span>
-                      <span>📍 {event.location}</span>
-                      <span>👥 {event.registrations?.length || 0} registered</span>
+                      <span>📅 {new Date(event.startDate).toLocaleDateString()}</span>
+                      <span>📍 {event.venue}</span>
+                      <span>👥 {event.totalRegistrations || 0} registered</span>
+                      <span className={`px-2 py-1 rounded-full ${
+                        event.status === 'upcoming' ? 'bg-blue-100 text-blue-800' :
+                        event.status === 'ongoing' ? 'bg-yellow-100 text-yellow-800' :
+                        event.status === 'completed' ? 'bg-gray-100 text-gray-800' :
+                        'bg-red-100 text-red-800'
+                      }`}>
+                        {event.status}
+                      </span>
                     </div>
                   </div>
                   <div className="flex items-center space-x-2">
                     <Link
-                      to={`/admin/events/${event._id}/registrations`}
+                      to={`/admin/events/${event._id}/registrations/detailed`}
                       className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg"
-                      title="View Registrations"
+                      title="View Detailed Registrations"
                     >
-                      <Eye className="w-4 h-4" />
+                      <FileText className="w-4 h-4" />
+                    </Link>
+                    <Link
+                      to={`/admin/events/${event._id}/attendance`}
+                      className="p-2 text-green-600 hover:bg-green-100 rounded-lg"
+                      title="Manage Attendance"
+                    >
+                      <UserCheck className="w-4 h-4" />
+                    </Link>
+                    <Link
+                      to={`/admin/events/${event._id}/prizes`}
+                      className="p-2 text-purple-600 hover:bg-purple-100 rounded-lg"
+                      title="Manage Prizes"
+                    >
+                      <Award className="w-4 h-4" />
                     </Link>
                     <Link
                       to={`/admin/events/edit/${event._id}`}
-                      className="p-2 text-green-600 hover:bg-green-100 rounded-lg"
+                      className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
                       title="Edit Event"
                     >
                       <Edit className="w-4 h-4" />

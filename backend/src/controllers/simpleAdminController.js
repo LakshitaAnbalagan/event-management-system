@@ -11,7 +11,7 @@ const getStats = async (req, res) => {
     const totalRegistrations = await Registration.countDocuments();
     const activeEvents = await Event.countDocuments({ 
       isActive: true,
-      date: { $gte: new Date() }
+      startDate: { $gte: new Date() }
     });
 
     res.status(200).json({
@@ -36,6 +36,8 @@ const getStats = async (req, res) => {
 // Get all events for admin
 const getEvents = async (req, res) => {
   try {
+    console.log('🔍 getEvents called with query:', req.query);
+    
     const { limit } = req.query;
     const query = Event.find({ isActive: true })
       .populate('createdBy', 'name email')
@@ -46,6 +48,15 @@ const getEvents = async (req, res) => {
     }
 
     const events = await query;
+    console.log(`📊 Found ${events.length} events in database`);
+    
+    if (events.length > 0) {
+      console.log('📋 First event:', {
+        name: events[0].name,
+        isActive: events[0].isActive,
+        createdBy: events[0].createdBy
+      });
+    }
 
     // Add registration count and map fields for frontend
     const eventsWithRegistrations = await Promise.all(
@@ -67,6 +78,8 @@ const getEvents = async (req, res) => {
       })
     );
 
+    console.log(`✅ Sending ${eventsWithRegistrations.length} events to frontend`);
+    
     res.status(200).json({
       success: true,
       data: {

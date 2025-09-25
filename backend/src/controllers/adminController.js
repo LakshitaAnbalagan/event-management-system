@@ -1,6 +1,9 @@
+const mongoose = require('mongoose');
 const Event = require('../models/Event');
 const Registration = require('../models/Registration');
 const User = require('../models/User');
+const Attendance = require('../models/Attendance');
+const Prize = require('../models/Prize');
 const { validationResult } = require('express-validator');
 const { uploadToCloudinary, deleteFromCloudinary } = require('../utils/cloudinary');
 const { generateWordDocument, generateExcelSpreadsheet, cleanupTempFiles } = require('../utils/documentGenerator');
@@ -912,14 +915,672 @@ const getAllUsers = async (req, res) => {
   }
 };
 
+// Get detailed event registrations with additional info
+const getDetailedEventRegistrations = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      registrationType,
+      sortBy = 'submittedAt',
+      sortOrder = 'desc',
+      search
+    } = req.query;
+
+    // Check if event exists
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Build filter
+    const filter = { event: eventId };
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+    if (registrationType && registrationType !== 'all') {
+      filter.registrationType = registrationType;
+    }
+    if (search) {
+      filter.$or = [
+        { 'contactDetails.email': { $regex: search, $options: 'i' } },
+        { 'contactDetails.primaryPhone': { $regex: search, $options: 'i' } },
+        { 'academicDetails.college': { $regex: search, $options: 'i' } },
+        { 'academicDetails.department': { $regex: search, $options: 'i' } },
+        { teamName: { $regex: search, $options: 'i' } },
+        { registrationNumber: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Build sort
+    const sort = {};
+    sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const registrations = await Registration.find(filter)
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit))
+      .populate('user', 'name email phone college department year')
+      .populate('event', 'name startDate endDate venue registrationFee')
+      .lean();
+
+    const totalRegistrations = await Registration.countDocuments(filter);
+    const totalPages = Math.ceil(totalRegistrations / parseInt(limit));
+
+    // Get attendance and prize info for each registration
+    const registrationsWithDetails = await Promise.all(
+      registrations.map(async (registration) => {
+        // Get attendance info
+        const attendance = await Attendance.findOne({
+          event: eventId,
+          registration: registration._id
+        }).populate('markedBy', 'name');
+
+        // Get prize info
+        const prize = await Prize.findOne({
+          event: eventId,
+          'winner.registration': registration._id
+        });
+
+        return {
+          ...registration,
+          attendance: attendance || null,
+          prize: prize || null
+        };
+      })
+    );
+
+    // Get summary statistics
+    const stats = await Registration.aggregate([
+      { $match: { event: mongoose.Types.ObjectId(eventId) } },
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const attendanceStats = await Attendance.aggregate([
+      { $match: { event: mongoose.Types.ObjectId(eventId) } },
+      {
+        $group: {
+          _id: '$attendanceStatus',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        event: {
+          id: event._id,
+          name: event.name,
+          startDate: event.startDate,
+          endDate: event.endDate,
+          venue: event.venue,
+          registrationFee: event.registrationFee
+        },
+        registrations: registrationsWithDetails,
+        statistics: {
+          registrationStats: stats,
+          attendanceStats: attendanceStats,
+          totalRegistrations
+        },
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalRegistrations,
+          hasNextPage: parseInt(page) < totalPages,
+          hasPrevPage: parseInt(page) > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get detailed event registrations error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch detailed event registrations',
+      error: error.message
+    });
+  }
+};
+
+// Mark attendance for a registration
+const markAttendance = async (req, res) => {
+  try {
+    const { eventId, registrationId } = req.params;
+    const { attendanceStatus, notes } = req.body;
+
+    if (!['present', 'absent', 'late'].includes(attendanceStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid attendance status. Must be one of: present, absent, late'
+      });
+    }
+
+    // Verify event and registration exist
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    const registration = await Registration.findById(registrationId)
+      .populate('user', 'name email');
+    if (!registration || registration.event.toString() !== eventId) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration not found for this event'
+      });
+    }
+
+    // Check if attendance already exists
+    let attendance = await Attendance.findOne({
+      event: eventId,
+      registration: registrationId
+    });
+
+    if (attendance) {
+      // Update existing attendance
+      attendance.attendanceStatus = attendanceStatus;
+      attendance.notes = notes || '';
+      attendance.markedBy = req.user._id;
+      attendance.markedAt = new Date();
+      
+      if (attendanceStatus === 'present' && !attendance.checkInTime) {
+        attendance.checkInTime = new Date();
+      }
+    } else {
+      // Create new attendance record
+      attendance = new Attendance({
+        event: eventId,
+        registration: registrationId,
+        user: registration.user._id,
+        attendanceStatus,
+        notes: notes || '',
+        markedBy: req.user._id,
+        checkInTime: attendanceStatus === 'present' ? new Date() : null
+      });
+    }
+
+    await attendance.save();
+
+    // Populate the response
+    const populatedAttendance = await Attendance.findById(attendance._id)
+      .populate('user', 'name email')
+      .populate('registration', 'registrationNumber')
+      .populate('markedBy', 'name');
+
+    res.status(200).json({
+      success: true,
+      message: 'Attendance marked successfully',
+      data: { attendance: populatedAttendance }
+    });
+
+  } catch (error) {
+    console.error('Mark attendance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to mark attendance',
+      error: error.message
+    });
+  }
+};
+
+// Get attendance summary for an event
+const getEventAttendance = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { page = 1, limit = 20, status, search } = req.query;
+
+    // Verify event exists
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Build filter
+    const filter = { event: eventId };
+    if (status && status !== 'all') {
+      filter.attendanceStatus = status;
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Get attendance records
+    let attendanceQuery = Attendance.find(filter)
+      .populate('user', 'name email phone college department')
+      .populate('registration', 'registrationNumber registrationType teamName')
+      .populate('markedBy', 'name')
+      .sort({ markedAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    if (search) {
+      // If search is provided, we need to filter by user details
+      const userFilter = {
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { phone: { $regex: search, $options: 'i' } }
+        ]
+      };
+      const users = await User.find(userFilter).select('_id');
+      const userIds = users.map(u => u._id);
+      filter.user = { $in: userIds };
+    }
+
+    const attendance = await attendanceQuery;
+    const totalAttendance = await Attendance.countDocuments(filter);
+    const totalPages = Math.ceil(totalAttendance / parseInt(limit));
+
+    // Get summary statistics
+    const attendanceStats = await Attendance.aggregate([
+      { $match: { event: mongoose.Types.ObjectId(eventId) } },
+      {
+        $group: {
+          _id: '$attendanceStatus',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const totalRegistrations = await Registration.countDocuments({ event: eventId });
+    const attendanceMarked = await Attendance.countDocuments({ event: eventId });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        event: {
+          id: event._id,
+          name: event.name,
+          startDate: event.startDate,
+          venue: event.venue
+        },
+        attendance,
+        statistics: {
+          attendanceStats,
+          totalRegistrations,
+          attendanceMarked,
+          attendanceNotMarked: totalRegistrations - attendanceMarked
+        },
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalAttendance,
+          hasNextPage: parseInt(page) < totalPages,
+          hasPrevPage: parseInt(page) > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get event attendance error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch event attendance',
+      error: error.message
+    });
+  }
+};
+
+// Add prize for an event
+const addEventPrize = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const {
+      prizeName,
+      prizeDescription,
+      position,
+      prizeValue,
+      currency,
+      winnerType,
+      userId,
+      teamName,
+      teamMembers,
+      registrationId,
+      notes
+    } = req.body;
+
+    // Verify event exists
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Verify registration if provided
+    let registration = null;
+    if (registrationId) {
+      registration = await Registration.findById(registrationId)
+        .populate('user', 'name email');
+      if (!registration || registration.event.toString() !== eventId) {
+        return res.status(404).json({
+          success: false,
+          message: 'Registration not found for this event'
+        });
+      }
+    }
+
+    // Handle prize image upload if provided
+    let prizeImage = null;
+    if (req.file) {
+      try {
+        const uploadResult = await uploadToCloudinary(req.file.buffer, {
+          folder: 'kongu-events/prizes',
+          transformation: [
+            { width: 800, height: 600, crop: 'fit', quality: 'auto:good' }
+          ]
+        });
+        
+        prizeImage = {
+          public_id: uploadResult.public_id,
+          url: uploadResult.url
+        };
+      } catch (uploadError) {
+        console.error('Prize image upload error:', uploadError);
+        return res.status(400).json({
+          success: false,
+          message: 'Failed to upload prize image'
+        });
+      }
+    }
+
+    // Create prize data
+    const prizeData = {
+      event: eventId,
+      prizeName,
+      prizeDescription,
+      position,
+      prizeValue: prizeValue || 0,
+      currency: currency || 'INR',
+      winner: {
+        type: winnerType,
+        registration: registrationId || null
+      },
+      prizeImage,
+      awardedBy: req.user._id,
+      notes: notes || ''
+    };
+
+    // Set winner details based on type
+    if (winnerType === 'individual') {
+      if (userId) {
+        prizeData.winner.user = userId;
+      } else if (registration) {
+        prizeData.winner.user = registration.user._id;
+      }
+    } else if (winnerType === 'team') {
+      prizeData.winner.teamName = teamName;
+      prizeData.winner.teamMembers = teamMembers || [];
+    }
+
+    const prize = new Prize(prizeData);
+    await prize.save();
+
+    // Populate the response
+    const populatedPrize = await Prize.findById(prize._id)
+      .populate('event', 'name')
+      .populate('winner.user', 'name email')
+      .populate('winner.registration', 'registrationNumber teamName')
+      .populate('awardedBy', 'name');
+
+    res.status(201).json({
+      success: true,
+      message: 'Prize added successfully',
+      data: { prize: populatedPrize }
+    });
+
+  } catch (error) {
+    console.error('Add event prize error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add prize',
+      error: error.message
+    });
+  }
+};
+
+// Get prizes for an event
+const getEventPrizes = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { page = 1, limit = 20, position } = req.query;
+
+    // Verify event exists
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Build filter
+    const filter = { event: eventId };
+    if (position && position !== 'all') {
+      filter.position = position;
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const prizes = await Prize.find(filter)
+      .populate('event', 'name')
+      .populate('winner.user', 'name email phone college department')
+      .populate('winner.registration', 'registrationNumber registrationType teamName')
+      .populate('awardedBy', 'name')
+      .sort({ awardedAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const totalPrizes = await Prize.countDocuments(filter);
+    const totalPages = Math.ceil(totalPrizes / parseInt(limit));
+
+    // Get prize statistics
+    const prizeStats = await Prize.aggregate([
+      { $match: { event: mongoose.Types.ObjectId(eventId) } },
+      {
+        $group: {
+          _id: '$position',
+          count: { $sum: 1 },
+          totalValue: { $sum: '$prizeValue' }
+        }
+      }
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        event: {
+          id: event._id,
+          name: event.name,
+          startDate: event.startDate,
+          venue: event.venue
+        },
+        prizes,
+        statistics: {
+          prizeStats,
+          totalPrizes
+        },
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages,
+          totalPrizes,
+          hasNextPage: parseInt(page) < totalPages,
+          hasPrevPage: parseInt(page) > 1
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('Get event prizes error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch event prizes',
+      error: error.message
+    });
+  }
+};
+
+// Update prize
+const updateEventPrize = async (req, res) => {
+  try {
+    const { prizeId } = req.params;
+    const {
+      prizeName,
+      prizeDescription,
+      position,
+      prizeValue,
+      currency,
+      certificateIssued,
+      certificateNumber,
+      notes
+    } = req.body;
+
+    const prize = await Prize.findById(prizeId);
+    if (!prize) {
+      return res.status(404).json({
+        success: false,
+        message: 'Prize not found'
+      });
+    }
+
+    // Handle prize image upload if provided
+    if (req.file) {
+      try {
+        // Delete old image if exists
+        if (prize.prizeImage && prize.prizeImage.public_id) {
+          await deleteFromCloudinary(prize.prizeImage.public_id);
+        }
+
+        // Upload new image
+        const uploadResult = await uploadToCloudinary(req.file.buffer, {
+          folder: 'kongu-events/prizes',
+          transformation: [
+            { width: 800, height: 600, crop: 'fit', quality: 'auto:good' }
+          ]
+        });
+        
+        prize.prizeImage = {
+          public_id: uploadResult.public_id,
+          url: uploadResult.url
+        };
+      } catch (uploadError) {
+        console.error('Prize image upload error:', uploadError);
+        return res.status(400).json({
+          success: false,
+          message: 'Failed to upload prize image'
+        });
+      }
+    }
+
+    // Update fields
+    if (prizeName) prize.prizeName = prizeName;
+    if (prizeDescription !== undefined) prize.prizeDescription = prizeDescription;
+    if (position) prize.position = position;
+    if (prizeValue !== undefined) prize.prizeValue = prizeValue;
+    if (currency) prize.currency = currency;
+    if (certificateIssued !== undefined) prize.certificateIssued = certificateIssued;
+    if (certificateNumber !== undefined) prize.certificateNumber = certificateNumber;
+    if (notes !== undefined) prize.notes = notes;
+
+    await prize.save();
+
+    // Populate the response
+    const populatedPrize = await Prize.findById(prize._id)
+      .populate('event', 'name')
+      .populate('winner.user', 'name email')
+      .populate('winner.registration', 'registrationNumber teamName')
+      .populate('awardedBy', 'name');
+
+    res.status(200).json({
+      success: true,
+      message: 'Prize updated successfully',
+      data: { prize: populatedPrize }
+    });
+
+  } catch (error) {
+    console.error('Update event prize error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update prize',
+      error: error.message
+    });
+  }
+};
+
+// Delete prize
+const deleteEventPrize = async (req, res) => {
+  try {
+    const { prizeId } = req.params;
+
+    const prize = await Prize.findById(prizeId);
+    if (!prize) {
+      return res.status(404).json({
+        success: false,
+        message: 'Prize not found'
+      });
+    }
+
+    // Delete prize image from cloudinary if exists
+    if (prize.prizeImage && prize.prizeImage.public_id) {
+      try {
+        await deleteFromCloudinary(prize.prizeImage.public_id);
+      } catch (deleteError) {
+        console.error('Error deleting prize image:', deleteError);
+        // Continue with prize deletion even if image deletion fails
+      }
+    }
+
+    await Prize.findByIdAndDelete(prizeId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Prize deleted successfully'
+    });
+
+  } catch (error) {
+    console.error('Delete event prize error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete prize',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createEvent,
   updateEvent,
   deleteEvent,
   getAllEvents,
   getEventRegistrations,
+  getDetailedEventRegistrations,
   updateRegistrationStatus,
   exportEventRegistrations,
   getDashboardStats,
-  getAllUsers
+  getAllUsers,
+  markAttendance,
+  getEventAttendance,
+  addEventPrize,
+  getEventPrizes,
+  updateEventPrize,
+  deleteEventPrize
 };

@@ -27,6 +27,9 @@ import AdminEvents from './pages/admin/AdminEvents';
 import AdminEventForm from './pages/admin/AdminEventForm';
 import AdminRegistrations from './pages/admin/AdminRegistrations';
 import AdminUsers from './pages/admin/AdminUsers';
+import EventRegistrationsDetailed from './pages/admin/EventRegistrationsDetailed';
+import EventAttendance from './pages/admin/EventAttendance';
+import EventPrizes from './pages/admin/EventPrizes';
 
 // Protected Route Components
 import ProtectedRoute from './components/ProtectedRoute';
@@ -82,6 +85,9 @@ function App() {
                 <Route path="events/new" element={<AdminEventForm />} />
                 <Route path="events/edit/:id" element={<AdminEventForm />} />
                 <Route path="events/:id/registrations" element={<AdminRegistrations />} />
+                <Route path="events/:eventId/registrations/detailed" element={<EventRegistrationsDetailed />} />
+                <Route path="events/:eventId/attendance" element={<EventAttendance />} />
+                <Route path="events/:eventId/prizes" element={<EventPrizes />} />
                 <Route path="users" element={<AdminUsers />} />
                 <Route path="*" element={<Navigate to="/admin" replace />} />
               </Routes>

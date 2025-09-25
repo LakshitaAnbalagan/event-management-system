@@ -3,13 +3,28 @@ const { body } = require('express-validator');
 const multer = require('multer');
 const path = require('path');
 const {
-  getStats,
-  getEvents,
-  getEvent,
   createEvent,
   updateEvent,
   deleteEvent,
-  toggleEventStatus,
+  getAllEvents,
+  getDetailedEventRegistrations,
+  updateRegistrationStatus,
+  exportEventRegistrations,
+  getDashboardStats,
+  getAllUsers,
+  markAttendance,
+  getEventAttendance,
+  addEventPrize,
+  getEventPrizes,
+  updateEventPrize,
+  deleteEventPrize
+} = require('../controllers/adminController');
+
+// Import functions from simpleAdminController for compatibility
+const {
+  getStats,
+  getEvents,
+  getEvent,
   getUsers,
   getEventRegistrations
 } = require('../controllers/simpleAdminController');
@@ -17,19 +32,9 @@ const { authenticateToken, requireAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
-// Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, 'uploads/');
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
-
+// Configure multer for file uploads (using memory storage for Cloudinary)
 const upload = multer({
-  storage: storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit
   },
@@ -41,6 +46,10 @@ const upload = multer({
     }
   }
 });
+
+// Test route without authentication (temporary for debugging)
+router.get('/test-events-no-auth', getEvents);
+router.get('/test-stats-no-auth', getStats);
 
 // Middleware to ensure admin authentication
 router.use(authenticateToken);
@@ -122,13 +131,25 @@ router.get('/stats', getStats);
 // Event management routes
 router.get('/events', getEvents);
 router.get('/events/:id', getEvent);
-router.post('/events', upload.single('image'), createEvent);
-router.put('/events/:id', upload.single('image'), updateEvent);
+router.post('/events', upload.fields([{ name: 'poster' }, { name: 'paymentQR' }]), eventValidation, createEvent);
+router.put('/events/:id', upload.fields([{ name: 'poster' }, { name: 'paymentQR' }]), eventValidation, updateEvent);
 router.delete('/events/:id', deleteEvent);
-router.patch('/events/:id/status', toggleEventStatus);
 
 // Registration management routes
-router.get('/events/:eventId/registrations', getEventRegistrations);
+router.get('/events/:id/registrations', getEventRegistrations);
+router.get('/events/:eventId/registrations/detailed', getDetailedEventRegistrations);
+router.put('/registrations/:registrationId/status', updateRegistrationStatus);
+router.get('/events/:eventId/registrations/export', exportEventRegistrations);
+
+// Attendance management routes
+router.post('/events/:eventId/registrations/:registrationId/attendance', markAttendance);
+router.get('/events/:eventId/attendance', getEventAttendance);
+
+// Prize management routes
+router.post('/events/:eventId/prizes', upload.single('prizeImage'), addEventPrize);
+router.get('/events/:eventId/prizes', getEventPrizes);
+router.put('/prizes/:prizeId', upload.single('prizeImage'), updateEventPrize);
+router.delete('/prizes/:prizeId', deleteEventPrize);
 
 // User management routes
 router.get('/users', getUsers);

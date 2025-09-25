@@ -38,6 +38,7 @@ function AdminEventForm() {
       location: '',
       maxParticipants: '',
       category: 'technical',
+      department: '',
       registrationDeadline: '',
       requirements: '',
       contactEmail: '',
@@ -89,28 +90,40 @@ function AdminEventForm() {
       setLoading(true);
       
       // Combine date and time
-      const eventDateTime = new Date(`${data.date}T${data.time}`);
+      const eventStartDateTime = new Date(`${data.date}T${data.time}`);
+      // Set end date to 3 hours after start date (default event duration)
+      const eventEndDateTime = new Date(eventStartDateTime.getTime() + (3 * 60 * 60 * 1000));
       
       const formData = new FormData();
-      formData.append('title', data.title);
+      // Map frontend field names to backend expected names
+      formData.append('name', data.title);
       formData.append('description', data.description);
-      formData.append('date', eventDateTime.toISOString());
-      formData.append('location', data.location);
+      formData.append('startDate', eventStartDateTime.toISOString());
+      formData.append('endDate', eventEndDateTime.toISOString());
+      formData.append('venue', data.location);
+      formData.append('department', data.department);
       formData.append('maxParticipants', data.maxParticipants);
       formData.append('registrationFee', data.registrationFee || 0);
-      formData.append('category', data.category);
-      formData.append('requirements', data.requirements || '');
-      formData.append('contactEmail', data.contactEmail);
-      formData.append('contactPhone', data.contactPhone || '');
-      formData.append('isActive', data.isActive);
+      formData.append('instructions', data.requirements || '');
+      
+      // Payment details
+      const paymentDetails = {
+        upiId: '',
+        phoneNumber: data.contactPhone || ''
+      };
+      formData.append('paymentDetails', JSON.stringify(paymentDetails));
       
       if (data.registrationDeadline) {
         formData.append('registrationDeadline', new Date(data.registrationDeadline).toISOString());
+      } else {
+        // Set default registration deadline to 1 day before event
+        const defaultDeadline = new Date(eventStartDateTime.getTime() - (24 * 60 * 60 * 1000));
+        formData.append('registrationDeadline', defaultDeadline.toISOString());
       }
       
-      // Handle image upload
+      // Handle image upload - backend expects 'poster' field
       if (data.image && data.image[0]) {
-        formData.append('image', data.image[0]);
+        formData.append('poster', data.image[0]);
       }
 
       const url = isEdit ? `/admin/events/${id}` : '/admin/events';
@@ -321,6 +334,30 @@ function AdminEventForm() {
               <option value="competition">Competition</option>
               <option value="other">Other</option>
             </select>
+          </div>
+
+          {/* Department */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Department *
+            </label>
+            <select
+              {...register('department', { required: 'Department is required' })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="">Select Department</option>
+              <option value="Computer Science and Engineering">Computer Science and Engineering</option>
+              <option value="Information Technology">Information Technology</option>
+              <option value="Electronics and Communication Engineering">Electronics and Communication Engineering</option>
+              <option value="Electrical and Electronics Engineering">Electrical and Electronics Engineering</option>
+              <option value="Mechanical Engineering">Mechanical Engineering</option>
+              <option value="Civil Engineering">Civil Engineering</option>
+              <option value="Artificial Intelligence Department">Artificial Intelligence Department</option>
+              <option value="General">General</option>
+            </select>
+            {errors.department && (
+              <p className="text-red-600 text-sm mt-1">{errors.department.message}</p>
+            )}
           </div>
 
           {/* Registration Deadline */}
