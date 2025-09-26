@@ -130,13 +130,53 @@ router.get('/test-events/:eventId/registrations/detailed', async (req, res) => {
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
 
-    // Get registrations with user details
-    const registrations = await Registration.find(filter)
-      .populate('user', 'name email phone college department')
-      .populate('event', 'name startDate venue')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+    // Aggregation pipeline to get registrations with attendance data
+    const pipeline = [
+      { $match: { event: new mongoose.Types.ObjectId(eventId) } },
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'user',
+          foreignField: '_id',
+          as: 'user',
+        },
+      },
+      { $unwind: '$user' },
+      {
+        $lookup: {
+          from: 'attendances',
+          localField: '_id',
+          foreignField: 'registration',
+          as: 'attendance',
+        },
+      },
+      {
+        $unwind: {
+          path: '$attendance',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+    ];
+
+    if (search) {
+      pipeline.push({
+        $match: {
+          $or: [
+            { 'user.name': { $regex: search, $options: 'i' } },
+            { 'user.email': { $regex: search, $options: 'i' } },
+            { registrationNumber: { $regex: search, $options: 'i' } },
+          ],
+        },
+      });
+    }
+
+    pipeline.push(
+      { $sort: { createdAt: -1 } },
+      { $skip: skip },
+      { $limit: parseInt(limit) }
+    );
+
+    const registrations = await Registration.aggregate(pipeline);
 
     const totalRegistrations = await Registration.countDocuments(filter);
     const totalPages = Math.ceil(totalRegistrations / parseInt(limit));
@@ -421,15 +461,43 @@ router.post('/test-events/:eventId/registrations/:registrationId/attendance', as
     });
 
     if (attendance) {
+      // Get admin user for updating attendance
+      let adminUser = await User.findOne({ role: 'admin' });
+      if (!adminUser) {
+        adminUser = new User({
+          name: 'System Admin',
+          email: 'admin@kongu.edu',
+          password: 'admin123',
+          role: 'admin',
+          isVerified: true
+        });
+        await adminUser.save();
+      }
+
       // Update existing attendance
       attendance.attendanceStatus = attendanceStatus;
       attendance.notes = notes || '';
       attendance.markedAt = new Date();
+      attendance.markedBy = adminUser._id;
       
       if (attendanceStatus === 'present' && !attendance.checkInTime) {
         attendance.checkInTime = new Date();
       }
     } else {
+      // Get or create a default admin user for marking attendance
+      let adminUser = await User.findOne({ role: 'admin' });
+      if (!adminUser) {
+        // Create a default admin if none exists
+        adminUser = new User({
+          name: 'System Admin',
+          email: 'admin@kongu.edu',
+          password: 'admin123',
+          role: 'admin',
+          isVerified: true
+        });
+        await adminUser.save();
+      }
+
       // Create new attendance record
       attendance = new Attendance({
         event: eventId,
@@ -437,7 +505,9 @@ router.post('/test-events/:eventId/registrations/:registrationId/attendance', as
         user: registration.user._id,
         attendanceStatus,
         notes: notes || '',
-        checkInTime: attendanceStatus === 'present' ? new Date() : null
+        checkInTime: attendanceStatus === 'present' ? new Date() : null,
+        markedBy: adminUser._id,
+        markedAt: new Date()
       });
     }
 
@@ -446,7 +516,8 @@ router.post('/test-events/:eventId/registrations/:registrationId/attendance', as
     // Populate the response
     const populatedAttendance = await Attendance.findById(attendance._id)
       .populate('user', 'name email')
-      .populate('registration', 'registrationNumber');
+      .populate('registration', 'registrationNumber')
+      .populate('markedBy', 'name email');
 
     res.status(200).json({
       success: true,
@@ -658,6 +729,36 @@ router.use((error, req, res, next) => {
   }
   
   next(error);
+});
+
+const { Parser } = require('json2csv');
+
+router.get('/test-events/:eventId/attendance/export', async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const attendanceRecords = await Attendance.find({ event: eventId })
+      .populate('user', 'name email phone')
+      .populate('registration', 'registrationNumber');
+
+    const fields = [
+      { label: 'User Name', value: 'user.name' },
+      { label: 'Email', value: 'user.email' },
+      { label: 'Phone', value: 'user.phone' },
+      { label: 'Registration Number', value: 'registration.registrationNumber' },
+      { label: 'Status', value: 'attendanceStatus' },
+      { label: 'Check-in Time', value: 'checkInTime' },
+      { label: 'Notes', value: 'notes' },
+    ];
+
+    const json2csvParser = new Parser({ fields });
+    const csv = json2csvParser.parse(attendanceRecords);
+
+    res.header('Content-Type', 'text/csv');
+    res.attachment(`attendance-${eventId}.csv`);
+    res.send(csv);
+  } catch (error) {
+    res.status(500).send('Could not export attendance data');
+  }
 });
 
 module.exports = router;

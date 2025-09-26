@@ -33,21 +33,24 @@ function EventAttendance() {
   };
 
   const exportAttendance = async () => {
+    const toastId = toast.loading('Exporting attendance data...');
     try {
-      const response = await api.get(`/admin/events/${eventId}/attendance/export`, {
-        responseType: 'blob'
+      const response = await api.get(`/admin/test-events/${eventId}/attendance/export`, {
+        responseType: 'blob',
       });
-      
-      // Create download link
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+
+      const blob = new Blob([response.data], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `attendance-${eventId}.xlsx`);
+      link.setAttribute('download', `attendance-${eventId}.csv`);
       document.body.appendChild(link);
       link.click();
       link.remove();
+      toast.success('Export successful!', { id: toastId });
     } catch (error) {
       console.error('Export failed:', error);
+      toast.error('Export failed. Please try again.', { id: toastId });
     }
   };
 
