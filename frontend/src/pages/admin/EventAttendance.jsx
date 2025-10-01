@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from 'react-query';
 import api from '../../services/api';
+import toast from 'react-hot-toast';
 
 function EventAttendance() {
   const { eventId } = useParams();

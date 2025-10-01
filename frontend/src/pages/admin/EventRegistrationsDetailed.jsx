@@ -50,7 +50,17 @@ function EventRegistrationsDetailed() {
 
   // Add prize mutation
   const addPrizeMutation = useMutation(
-    (prizeData) => api.post(`/admin/test-events/${eventId}/prizes`, prizeData),
+    (prizeData) => {
+      const formData = new FormData();
+      Object.keys(prizeData).forEach(key => {
+        formData.append(key, prizeData[key]);
+      });
+      return api.post(`/admin/test-events/${eventId}/prizes`, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+    },
     {
       onSuccess: () => {
         toast.success('Prize added successfully');
@@ -184,19 +194,19 @@ function EventRegistrationsDetailed() {
           <div className="bg-white p-6 rounded-lg shadow">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Present</h3>
             <p className="text-3xl font-bold text-green-600">
-              {statistics?.attendanceStats?.find(s => s._id === 'present')?.count || 0}
+              {statistics?.present || 0}
             </p>
           </div>
           <div className="bg-white p-6 rounded-lg shadow">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Absent</h3>
             <p className="text-3xl font-bold text-red-600">
-              {statistics?.attendanceStats?.find(s => s._id === 'absent')?.count || 0}
+              {statistics?.absent || 0}
             </p>
           </div>
           <div className="bg-white p-6 rounded-lg shadow">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Late</h3>
             <p className="text-3xl font-bold text-yellow-600">
-              {statistics?.attendanceStats?.find(s => s._id === 'late')?.count || 0}
+              {statistics?.late || 0}
             </p>
           </div>
         </div>

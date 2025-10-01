@@ -182,21 +182,21 @@ router.get('/test-events/:eventId/registrations/detailed', async (req, res) => {
     const totalPages = Math.ceil(totalRegistrations / parseInt(limit));
 
     // Get statistics
-    const stats = await Registration.aggregate([
+    const attendanceStats = await Attendance.aggregate([
       { $match: { event: new mongoose.Types.ObjectId(eventId) } },
       {
         $group: {
-          _id: '$status',
-          count: { $sum: 1 }
-        }
-      }
+          _id: '$attendanceStatus',
+          count: { $sum: 1 },
+        },
+      },
     ]);
 
     const statistics = {
-      totalRegistrations: await Registration.countDocuments({ event: eventId }),
-      approvedRegistrations: stats.find(s => s._id === 'approved')?.count || 0,
-      pendingRegistrations: stats.find(s => s._id === 'pending')?.count || 0,
-      rejectedRegistrations: stats.find(s => s._id === 'rejected')?.count || 0
+      totalRegistrations,
+      present: attendanceStats.find((s) => s._id === 'present')?.count || 0,
+      absent: attendanceStats.find((s) => s._id === 'absent')?.count || 0,
+      late: attendanceStats.find((s) => s._id === 'late')?.count || 0,
     };
 
     res.json({
@@ -562,6 +562,19 @@ router.post('/test-events/:eventId/prizes', async (req, res) => {
       });
     }
 
+    // Get or create a default admin user for awarding prizes
+    let adminUser = await User.findOne({ role: 'admin' });
+    if (!adminUser) {
+      adminUser = new User({
+        name: 'System Admin',
+        email: 'admin@kongu.edu',
+        password: 'admin123',
+        role: 'admin',
+        isVerified: true
+      });
+      await adminUser.save();
+    }
+
     // Create prize
     const prize = new Prize({
       event: eventId,
@@ -577,6 +590,7 @@ router.post('/test-events/:eventId/prizes', async (req, res) => {
         teamName: teamName || null
       },
       notes: notes || '',
+      awardedBy: adminUser._id,
       awardedAt: new Date()
     });
 
