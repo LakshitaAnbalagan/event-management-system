@@ -2,7 +2,10 @@ import { create } from 'zustand';
 import { io } from 'socket.io-client';
 import toast from 'react-hot-toast';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL 
+  || (import.meta.env.DEV 
+    ? 'http://localhost:5000' 
+    : 'https://event-management-system-1-4yi9.onrender.com');
 
 const useSocketStore = create((set, get) => ({
   // State

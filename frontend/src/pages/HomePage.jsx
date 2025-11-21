@@ -14,6 +14,11 @@ import {
   Sparkles
 } from 'lucide-react';
 
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL 
+  || (import.meta.env.DEV 
+    ? 'http://localhost:5000' 
+    : 'https://event-management-system-1-4yi9.onrender.com');
+
 // Helper function to get proper image URL
 const getImageUrl = (imagePath) => {
   console.log('HomePage - Original image path:', imagePath);
@@ -39,7 +44,7 @@ const getImageUrl = (imagePath) => {
   }
   
   // If it's a relative path, prepend backend URL
-  return `http://localhost:5000${imagePath}`;
+  return `${BACKEND_BASE_URL}${imagePath}`;
 };
 
 import eventService from '../services/eventService';

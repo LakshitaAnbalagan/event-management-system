@@ -18,41 +18,22 @@ import api from '../services/api';
 import { useAuthStore } from '../context/authStore';
 import LoadingSpinner from '../components/LoadingSpinner';
 
+const BACKEND_BASE_URL = import.meta.env.VITE_BACKEND_URL 
+  || (import.meta.env.DEV 
+    ? 'http://localhost:5000' 
+    : 'https://event-management-system-1-4yi9.onrender.com');
+
 // Helper function to get proper image URL
 const getImageUrl = (imagePath) => {
-  console.log('Original image path:', imagePath);
-  
-  // TEMPORARY: Always use fallback images until backend is fixed
-  const fallbackImages = [
-    'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400&h=250&fit=crop',
-    'https://images.unsplash.com/photo-1505373877841-8d25f7d46678?w=400&h=250&fit=crop',
-    'https://images.unsplash.com/photo-1515187029135-18ee286d815b?w=400&h=250&fit=crop',
-    'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=400&h=250&fit=crop'
-  ];
-  
-  // Use a random fallback image for variety
-  const randomIndex = Math.floor(Math.random() * fallbackImages.length);
-  const fallbackUrl = fallbackImages[randomIndex];
-  
-  console.log('Using fallback image:', fallbackUrl);
-  return fallbackUrl;
-  
-  // Original code (commented out for now):
-  /*
   if (!imagePath) {
-    console.log('No image path, using fallback');
     return 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400&h=250&fit=crop';
   }
   
   if (imagePath.startsWith('http')) {
-    console.log('Full URL detected:', imagePath);
     return imagePath;
   }
   
-  const fullUrl = `http://localhost:5000${imagePath}`;
-  console.log('Generated full URL:', fullUrl);
-  return fullUrl;
-  */
+  return `${BACKEND_BASE_URL}${imagePath}`;
 };
 
 const EventsPage = () => {
