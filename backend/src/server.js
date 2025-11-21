@@ -82,9 +82,18 @@ app.use('/uploads', (req, res, next) => {
 app.use('/uploads', express.static(uploadsPath));
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/kongu-event-management')
+const mongoUri = process.env.MONGODB_URI 
+  || process.env.MONGO_URL 
+  || process.env.DATABASE_URL 
+  || 'mongodb://localhost:27017/kongu-event-management';
+
+if (!process.env.MONGODB_URI && !process.env.MONGO_URL && !process.env.DATABASE_URL) {
+  console.warn('⚠️  No MongoDB URI provided via env vars. Falling back to localhost; this will fail on hosted environments.');
+}
+
+mongoose.connect(mongoUri)
 .then(() => {
-  console.log('Connected to MongoDB');
+  console.log('Connected to MongoDB using URI:', mongoUri.replace(/\/\/.*@/, '//****:****@'));
 })
 .catch((error) => {
   console.error('MongoDB connection error:', error);
