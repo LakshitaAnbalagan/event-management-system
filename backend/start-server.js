@@ -6,7 +6,12 @@ console.log('🚀 Starting Event Management System Backend Server...\n');
 // Set environment variables
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
 process.env.PORT = process.env.PORT || '5000';
-process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/kongu-event-management';
+
+// ❗ REMOVE localhost fallback
+if (!process.env.MONGODB_URI) {
+  console.error("❌ ERROR: MONGODB_URI is NOT SET!");
+  process.exit(1);
+}
 
 console.log('📋 Configuration:');
 console.log(`   Environment: ${process.env.NODE_ENV}`);
