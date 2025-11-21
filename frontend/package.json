@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Frontend for Kongu College Event Management System",
   "type": "module",
+  "engines": {
+    "node": "20.x",
+    "npm": "10.x"
+  },
   "scripts": {
     "dev": "vite --config vite.config.js --force --clearScreen false",
     "dev-alt": "vite serve --port 3000 --host --force",
